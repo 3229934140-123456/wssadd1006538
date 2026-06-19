@@ -81,6 +81,26 @@ export interface PatientFeedback {
   painLevel?: number;
 }
 
+export type ContactMethod = 'phone' | 'wechat';
+
+export const CONTACT_METHODS: { key: ContactMethod; label: string }[] = [
+  { key: 'phone', label: '电话' },
+  { key: 'wechat', label: '微信' },
+];
+
+export interface ContactLog {
+  id: string;
+  followUpId: string;
+  contactMethod: ContactMethod;
+  result: FollowUpResult;
+  contactTime: string;
+  operatorId: string;
+  operatorName: string;
+  notes?: string;
+  patientFeedback?: PatientFeedback;
+  appointmentId?: string;
+}
+
 export interface FollowUp {
   id: string;
   patientId: string;
@@ -96,6 +116,7 @@ export interface FollowUp {
   createdAt: string;
   updatedAt: string;
   attemptCount: number;
+  contactLogs: ContactLog[];
 }
 
 export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';

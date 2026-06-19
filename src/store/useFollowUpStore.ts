@@ -6,23 +6,34 @@ import type {
   FollowUpStatus,
   PatientFeedback,
   FollowUpWithDetails,
+  ContactLog,
+  ContactMethod,
 } from '@/types';
 import { mockFollowUps } from '@/data/mockData';
-import { generateId, getToday, addDays, isPast, isToday } from '@/utils';
+import { generateId, getToday, addDays, isPast, isToday, formatDateCN } from '@/utils';
 import { usePatientStore } from './usePatientStore';
 import { useAuthStore } from './useAuthStore';
 
 interface FollowUpState {
   followUps: FollowUp[];
-  addFollowUp: (followUp: Omit<FollowUp, 'id' | 'createdAt' | 'updatedAt' | 'attemptCount' | 'status'>) => FollowUp;
+  addFollowUp: (followUp: Omit<FollowUp, 'id' | 'createdAt' | 'updatedAt' | 'attemptCount' | 'status' | 'contactLogs'>) => FollowUp;
   updateFollowUp: (id: string, data: Partial<FollowUp>) => void;
   updateFollowUpResult: (
     id: string,
     result: FollowUpResult,
+    contactMethod: ContactMethod,
+    operatorId: string,
+    operatorName: string,
     feedback?: PatientFeedback,
     notes?: string,
-    nextFollowUpDate?: string
+    nextFollowUpDate?: string,
+    appointmentId?: string
   ) => void;
+  addContactLog: (
+    followUpId: string,
+    log: Omit<ContactLog, 'id' | 'contactTime'>
+  ) => void;
+  getContactLogs: (followUpId: string) => ContactLog[];
   getFollowUpById: (id: string) => FollowUp | undefined;
   getFollowUpsByPatient: (patientId: string) => FollowUp[];
   getTodayFollowUps: () => FollowUpWithDetails[];
@@ -30,7 +41,7 @@ interface FollowUpState {
   getCompletedFollowUps: () => FollowUpWithDetails[];
   getAllFollowUpsWithDetails: () => FollowUpWithDetails[];
   getFollowUpsByDoctor: (doctorId: string) => FollowUp[];
-  retryNextDay: (id: string) => void;
+  retryNextDay: (id: string, contactMethod: ContactMethod, operatorId: string, operatorName: string) => void;
 }
 
 function enrichFollowUp(followUp: FollowUp): FollowUpWithDetails {
@@ -50,10 +61,18 @@ function enrichFollowUp(followUp: FollowUp): FollowUpWithDetails {
   };
 }
 
+function getCurrentDateTimeStr(): string {
+  const now = new Date();
+  const date = formatDateCN(now);
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${date} ${hours}:${minutes}`;
+}
+
 export const useFollowUpStore = create<FollowUpState>()(
   persist(
     (set, get) => ({
-      followUps: mockFollowUps,
+      followUps: mockFollowUps.map(f => ({ ...f, contactLogs: f.contactLogs || [] })),
 
       addFollowUp: (followUp) => {
         const now = getToday();
@@ -62,6 +81,7 @@ export const useFollowUpStore = create<FollowUpState>()(
           id: generateId(),
           status: 'pending',
           attemptCount: 0,
+          contactLogs: [],
           createdAt: now,
           updatedAt: now,
         };
@@ -79,7 +99,40 @@ export const useFollowUpStore = create<FollowUpState>()(
         }));
       },
 
-      updateFollowUpResult: (id, result, feedback, notes, nextFollowUpDate) => {
+      addContactLog: (followUpId, log) => {
+        const newLog: ContactLog = {
+          ...log,
+          id: generateId(),
+          contactTime: getCurrentDateTimeStr(),
+        };
+        set((state) => ({
+          followUps: state.followUps.map((f) =>
+            f.id === followUpId
+              ? {
+                  ...f,
+                  contactLogs: [...(f.contactLogs || []), newLog],
+                }
+              : f
+          ),
+        }));
+      },
+
+      getContactLogs: (followUpId) => {
+        const followUp = get().followUps.find(f => f.id === followUpId);
+        return followUp?.contactLogs || [];
+      },
+
+      updateFollowUpResult: (
+        id,
+        result,
+        contactMethod,
+        operatorId,
+        operatorName,
+        feedback,
+        notes,
+        nextFollowUpDate,
+        appointmentId
+      ) => {
         const today = getToday();
         let status: FollowUpStatus = 'completed';
         let plannedDate = today;
@@ -95,6 +148,19 @@ export const useFollowUpStore = create<FollowUpState>()(
           plannedDate = addDays(today, 1);
         }
 
+        const newLog: ContactLog = {
+          id: generateId(),
+          followUpId: id,
+          contactMethod,
+          result,
+          contactTime: getCurrentDateTimeStr(),
+          operatorId,
+          operatorName,
+          notes,
+          patientFeedback: feedback,
+          appointmentId,
+        };
+
         set((state) => ({
           followUps: state.followUps.map((f) =>
             f.id === id
@@ -108,6 +174,7 @@ export const useFollowUpStore = create<FollowUpState>()(
                   plannedDate,
                   attemptCount,
                   updatedAt: today,
+                  contactLogs: [...(f.contactLogs || []), newLog],
                 }
               : f
           ),
@@ -165,8 +232,18 @@ export const useFollowUpStore = create<FollowUpState>()(
         return get().followUps.filter((f) => f.assignedDoctorId === doctorId);
       },
 
-      retryNextDay: (id) => {
+      retryNextDay: (id, contactMethod, operatorId, operatorName) => {
         const today = getToday();
+        const newLog: ContactLog = {
+          id: generateId(),
+          followUpId: id,
+          contactMethod,
+          result: 'noAnswer',
+          contactTime: getCurrentDateTimeStr(),
+          operatorId,
+          operatorName,
+          notes: '未接通，次日自动提醒',
+        };
         set((state) => ({
           followUps: state.followUps.map((f) =>
             f.id === id
@@ -175,6 +252,7 @@ export const useFollowUpStore = create<FollowUpState>()(
                   plannedDate: addDays(today, 1),
                   attemptCount: f.attemptCount + 1,
                   updatedAt: today,
+                  contactLogs: [...(f.contactLogs || []), newLog],
                 }
               : f
           ),

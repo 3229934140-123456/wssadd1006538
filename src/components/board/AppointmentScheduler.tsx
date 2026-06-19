@@ -1,22 +1,27 @@
 import { useState } from 'react';
-import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, Check } from 'lucide-react';
-import type { Patient, User } from '@/types';
+import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react';
+import type { Patient, User, PatientFeedback, ContactMethod } from '@/types';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
+import { Badge } from '../ui/Badge';
 import { cn, formatDateCN, getToday, addDays } from '@/utils';
 import { useAppointmentStore } from '@/store/useAppointmentStore';
 
 interface AppointmentSchedulerProps {
   patient: Patient;
   doctor: User;
-  onConfirm: (date: string, timeSlot: string) => void;
+  onConfirm: (date: string, timeSlot: string, feedback?: PatientFeedback, notes?: string, contactMethod?: ContactMethod) => void;
   onCancel: () => void;
+  preFeedback?: PatientFeedback;
+  preNotes?: string;
+  preContactMethod?: ContactMethod;
 }
 
-export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: AppointmentSchedulerProps) {
+export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel, preFeedback, preNotes, preContactMethod }: AppointmentSchedulerProps) {
   const [selectedDate, setSelectedDate] = useState<string>(addDays(getToday(), 1));
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [currentWeekStart, setCurrentWeekStart] = useState<string>(getToday());
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   const getAvailableSlots = useAppointmentStore(state => state.getAvailableSlots);
 
@@ -40,11 +45,32 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
   const isToday = (date: string) => date === getToday();
   const isPast = (date: string) => date < getToday();
 
-  const handleConfirm = () => {
-    if (selectedDate && selectedSlot) {
-      onConfirm(selectedDate, selectedSlot);
-    }
+  const handleDateSelect = (date: string) => {
+    if (isPast(date)) return;
+    setSelectedDate(date);
+    setSelectedSlot(null);
+    setConflictError(null);
   };
+
+  const handleSlotSelect = (slot: string) => {
+    setSelectedSlot(slot);
+    setConflictError(null);
+  };
+
+  const handleConfirm = () => {
+    if (!selectedDate || !selectedSlot) return;
+
+    const latestAvailable = getAvailableSlots(selectedDate, doctor.id);
+    if (!latestAvailable.includes(selectedSlot)) {
+      setConflictError(`抱歉，${selectedSlot} 时段刚刚被其他患者预约，请重新选择。`);
+      setSelectedSlot(null);
+      return;
+    }
+
+    onConfirm(selectedDate, selectedSlot, preFeedback, preNotes, preContactMethod);
+  };
+
+  const hasPreData = (preFeedback && (preFeedback.bleedingImproved !== undefined || preFeedback.flossUsing !== undefined || preFeedback.otherComments)) || preNotes;
 
   return (
     <div className="p-6 animate-fade-in">
@@ -59,6 +85,32 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
           <Avatar name={patient.name} size="md" />
         </div>
       </div>
+
+      {hasPreData && (
+        <div className="mb-5 p-4 bg-green-50 border border-green-100 rounded-xl animate-slide-up">
+          <h4 className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+            <Check size={16} />
+            已记录本次联系
+          </h4>
+          <div className="space-y-1.5 text-sm text-green-700">
+            {preContactMethod && (
+              <p>联系方式：{preContactMethod === 'phone' ? '📞 电话' : '💬 微信'}</p>
+            )}
+            {preFeedback?.bleedingImproved !== undefined && (
+              <p>刷牙出血：{preFeedback.bleedingImproved ? '已缓解 ✅' : '未缓解 ❌'}</p>
+            )}
+            {preFeedback?.flossUsing !== undefined && (
+              <p>牙线使用：{preFeedback.flossUsing ? '按时使用 ✅' : '未使用 ⚠️'}</p>
+            )}
+            {preFeedback?.otherComments && (
+              <p>其他反馈：{preFeedback.otherComments}</p>
+            )}
+            {preNotes && (
+              <p>备注：{preNotes}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -88,7 +140,7 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
             return (
               <button
                 key={date}
-                onClick={() => !past && setSelectedDate(date)}
+                onClick={() => handleDateSelect(date)}
                 disabled={past}
                 className={cn(
                   'flex flex-col items-center py-3 rounded-xl transition-all duration-200',
@@ -118,17 +170,20 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
         <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
           <Clock size={16} className="text-primary-500" />
           可选时段
+          <span className="text-xs text-slate-400 font-normal ml-1">
+            （灰色为已被占用）
+          </span>
         </h4>
         <div className="grid grid-cols-4 gap-2">
           {availableSlots.length > 0 ? (
             availableSlots.map(slot => (
               <button
                 key={slot}
-                onClick={() => setSelectedSlot(slot)}
+                onClick={() => handleSlotSelect(slot)}
                 className={cn(
                   'py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-200 border-2',
                   selectedSlot === slot
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 ring-2 ring-primary-200'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-primary-300 hover:bg-primary-50'
                 )}
               >
@@ -137,15 +192,25 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
             ))
           ) : (
             <div className="col-span-4 py-8 text-center text-slate-400 text-sm">
-              当日暂无可用时段
+              当日暂无可用时段，请更换日期
             </div>
           )}
         </div>
       </div>
 
+      {conflictError && (
+        <div className="mb-5 p-3 bg-danger-50 border border-danger-100 rounded-lg flex items-start gap-2 animate-shake">
+          <AlertTriangle size={18} className="text-danger-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-danger-700">{conflictError}</p>
+        </div>
+      )}
+
       {selectedSlot && (
         <div className="mb-6 p-4 bg-primary-50 rounded-xl animate-slide-up">
-          <h4 className="text-sm font-medium text-primary-800 mb-2">预约信息确认</h4>
+          <h4 className="text-sm font-medium text-primary-800 mb-2 flex items-center gap-1.5">
+            <Check size={16} />
+            预约信息确认
+          </h4>
           <div className="space-y-1 text-sm text-primary-700">
             <p>患者：{patient.name}</p>
             <p>医生：{doctor.name}</p>
@@ -166,7 +231,7 @@ export function AppointmentScheduler({ patient, doctor, onConfirm, onCancel }: A
           disabled={!selectedSlot}
         >
           <Check size={16} />
-          确认预约
+          确认预约并保存
         </Button>
       </div>
     </div>

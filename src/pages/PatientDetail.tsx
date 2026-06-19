@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,6 +12,11 @@ import {
   ChevronUp,
   StickyNote,
   BadgeCheck,
+  CheckCircle2,
+  CalendarDays,
+  AlertCircle,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { usePatientStore } from '@/store/usePatientStore';
 import { useFollowUpStore } from '@/store/useFollowUpStore';
@@ -31,7 +36,7 @@ import {
   ProblemTag,
   FOLLOW_UP_RESULTS,
 } from '@/types';
-import { formatDateCN, formatDateShort, getToday, addDays } from '@/utils';
+import { formatDateCN, formatDateShort, getToday, addDays, isToday, isPast } from '@/utils';
 import { cn } from '@/utils';
 
 export default function PatientDetail() {
@@ -42,6 +47,7 @@ export default function PatientDetail() {
   const followUps = useFollowUpStore(state => state.getFollowUpsByPatient(id || ''));
   const appointments = useAppointmentStore(state => state.getAppointmentsByPatient(id || ''));
   const doctors = useAuthStore(state => state.users.filter(u => u.role === 'doctor'));
+  const receptions = useAuthStore(state => state.users.filter(u => u.role === 'reception'));
   const addCleaningRecord = usePatientStore(state => state.addCleaningRecord);
   const addFollowUp = useFollowUpStore(state => state.addFollowUp);
 
@@ -49,6 +55,7 @@ export default function PatientDetail() {
   const [expandedRecord, setExpandedRecord] = useState<string | null>(
     cleaningRecords[0]?.id || null
   );
+  const [showSuccessToast, setShowSuccessToast] = useState<{ visible: boolean; group: 'today' | 'future' | 'overdue'; receptionName: string; plannedDate: string } | null>(null);
 
   const [cleaningDate, setCleaningDate] = useState(getToday());
   const [selectedItems, setSelectedItems] = useState<string[]>(['超声波洁治', '喷砂抛光']);
@@ -56,6 +63,7 @@ export default function PatientDetail() {
   const [doctorNotes, setDoctorNotes] = useState('');
   const [suggestions, setSuggestions] = useState('');
   const [followUpDate, setFollowUpDate] = useState(addDays(getToday(), 7));
+  const [assignedReceptionId, setAssignedReceptionId] = useState<string>(receptions[0]?.id || '');
 
   if (!patient) {
     return (
@@ -98,11 +106,28 @@ export default function PatientDetail() {
       suggestions,
     });
 
+    const finalReceptionId = assignedReceptionId || receptions[0]?.id;
+    const finalReceptionName = receptions.find(r => r.id === finalReceptionId)?.name || '前台';
+
     addFollowUp({
       patientId: patient.id,
       cleaningRecordId: record.id,
       assignedDoctorId: patient.doctorId,
-      assignedReceptionId: 'reception1',
+      assignedReceptionId: finalReceptionId,
+      plannedDate: followUpDate,
+    });
+
+    let group: 'today' | 'future' | 'overdue' = 'future';
+    if (isToday(followUpDate)) {
+      group = 'today';
+    } else if (isPast(followUpDate)) {
+      group = 'overdue';
+    }
+
+    setShowSuccessToast({
+      visible: true,
+      group,
+      receptionName: finalReceptionName,
       plannedDate: followUpDate,
     });
 
@@ -112,6 +137,7 @@ export default function PatientDetail() {
     setDoctorNotes('');
     setSuggestions('');
     setFollowUpDate(addDays(getToday(), 7));
+    setAssignedReceptionId(receptions[0]?.id || '');
   };
 
   const getTagColor = (tagKey: ProblemTag): any => {
@@ -448,6 +474,24 @@ export default function PatientDetail() {
             onChange={(e) => setFollowUpDate(e.target.value)}
           />
 
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">负责跟进前台</label>
+            <select
+              value={assignedReceptionId}
+              onChange={(e) => setAssignedReceptionId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            >
+              {receptions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-400 mt-1">
+              随访待办将进入该前台的看板
+            </p>
+          </div>
+
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
             <Button variant="secondary" onClick={() => setShowAddModal(false)}>
               取消
@@ -458,6 +502,70 @@ export default function PatientDetail() {
           </div>
         </div>
       </Modal>
+
+      {showSuccessToast?.visible && (
+        <div className="fixed top-6 right-6 z-50 animate-slide-up">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-5 w-[400px] overflow-hidden">
+            <div className="flex items-start gap-4">
+              <div className={cn(
+                'w-12 h-12 rounded-xl flex items-center justify-center shrink-0',
+                showSuccessToast.group === 'today' && 'bg-primary-100 text-primary-600',
+                showSuccessToast.group === 'future' && 'bg-blue-100 text-blue-600',
+                showSuccessToast.group === 'overdue' && 'bg-warning-100 text-warning-600',
+              )}>
+                {showSuccessToast.group === 'today' && <Clock size={24} />}
+                {showSuccessToast.group === 'future' && <CalendarDays size={24} />}
+                {showSuccessToast.group === 'overdue' && <AlertCircle size={24} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-green-500" />
+                  <h4 className="font-semibold text-slate-900">洁治记录已保存</h4>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-slate-400" />
+                    <span className="text-sm text-slate-600">
+                      随访待办已进入：
+                    </span>
+                    <Badge variant={
+                      showSuccessToast.group === 'today' ? 'info' :
+                      showSuccessToast.group === 'overdue' ? 'warning' : 'default'
+                    }>
+                      {showSuccessToast.group === 'today' && '🔥 今日需联系'}
+                      {showSuccessToast.group === 'future' && '📅 未来待办'}
+                      {showSuccessToast.group === 'overdue' && '⚠️ 逾期未联系'}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-slate-500">
+                    计划回访：<span className="font-medium text-slate-700">{formatDateCN(showSuccessToast.plannedDate)}</span>
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    负责前台：<span className="font-medium text-slate-700">{showSuccessToast.receptionName}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSuccessToast(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors shrink-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowSuccessToast(null)}>
+                知道了
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => {
+                setShowSuccessToast(null);
+                navigate('/board');
+              }}>
+                前往看板
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

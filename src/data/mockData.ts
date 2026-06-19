@@ -1,5 +1,5 @@
-import type { User, Patient, CleaningRecord, FollowUp, Appointment } from '@/types';
-import { getToday, addDays, formatDate, generateId } from '@/utils';
+import type { User, Patient, CleaningRecord, FollowUp, Appointment, ContactLog } from '@/types';
+import { getToday, addDays, formatDate, generateId, formatDateCN } from '@/utils';
 
 export const mockUsers: User[] = [
   { id: 'doctor1', name: '张明医生', role: 'doctor', phone: '13800000001' },
@@ -164,6 +164,31 @@ for (let i = 0; i < 35; i++) {
     }
   }
 
+  const patientFeedback = actualStatus === 'completed' && result === 'connected' ? {
+    bleedingImproved: Math.random() > 0.3,
+    flossUsing: Math.random() > 0.5,
+    otherComments: Math.random() > 0.5 ? '患者反馈良好，无不适症状。' : '',
+  } : undefined;
+
+  const contactLogs: ContactLog[] = [];
+  if (actualStatus === 'completed' || attemptCount > 1) {
+    for (let j = 0; j < attemptCount; j++) {
+      const logDate = addDays(cleaningDate, j + 1);
+      const isLast = j === attemptCount - 1;
+      contactLogs.push({
+        id: `log${i + 1}-${j + 1}`,
+        followUpId: `followup${i + 1}`,
+        contactMethod: j % 2 === 0 ? 'phone' : 'wechat',
+        result: isLast ? (result || 'connected') : 'noAnswer',
+        contactTime: `${formatDateCN(logDate)} ${9 + j}:${String(10 + j * 5).padStart(2, '0')}`,
+        operatorId: j % 2 === 0 ? 'reception1' : 'reception2',
+        operatorName: j % 2 === 0 ? '林小护' : '王前台',
+        notes: !isLast ? '未接通，次日继续跟进' : undefined,
+        patientFeedback: isLast ? patientFeedback : undefined,
+      });
+    }
+  }
+
   const followUp: FollowUp = {
     id: `followup${i + 1}`,
     patientId: patient.id,
@@ -176,12 +201,9 @@ for (let i = 0; i < 35; i++) {
     createdAt: cleaningDate,
     updatedAt: actualStatus === 'completed' ? suggestedDate : cleaningDate,
     attemptCount,
-    patientFeedback: actualStatus === 'completed' && result === 'connected' ? {
-      bleedingImproved: Math.random() > 0.3,
-      flossUsing: Math.random() > 0.5,
-      otherComments: Math.random() > 0.5 ? '患者反馈良好，无不适症状。' : '',
-    } : undefined,
+    patientFeedback,
     notes: actualStatus === 'overdue' ? '已多次拨打未接通，建议继续跟进。' : undefined,
+    contactLogs,
   };
 
   if (actualStatus === 'completed' && result === 'booked') {

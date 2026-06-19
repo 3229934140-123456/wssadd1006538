@@ -89,6 +89,31 @@ export function PatientCard({ followUp, onClick, columnType }: PatientCardProps)
             )}
           </div>
 
+          {followUp.patientFeedback && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {followUp.patientFeedback.bleedingImproved !== undefined && (
+                <span className={cn(
+                  'text-xs px-2 py-0.5 rounded font-medium',
+                  followUp.patientFeedback.bleedingImproved
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-700'
+                )}>
+                  {followUp.patientFeedback.bleedingImproved ? '✓ 出血缓解' : '✗ 出血未缓解'}
+                </span>
+              )}
+              {followUp.patientFeedback.flossUsing !== undefined && (
+                <span className={cn(
+                  'text-xs px-2 py-0.5 rounded font-medium',
+                  followUp.patientFeedback.flossUsing
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-yellow-100 text-yellow-700'
+                )}>
+                  {followUp.patientFeedback.flossUsing ? '✓ 用牙线' : '✗ 未用牙线'}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
             <div className="flex items-center gap-1 text-xs text-slate-500">
               <Calendar size={12} />
