@@ -11,6 +11,8 @@ interface FollowUpColumnProps {
   icon: React.ReactNode;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  highlightedId?: string | null;
+  isHighlightedColumn?: boolean;
 }
 
 const colorStyles = {
@@ -36,14 +38,20 @@ export function FollowUpColumn({
   icon,
   selectedIds,
   onToggleSelect,
+  highlightedId,
+  isHighlightedColumn,
 }: FollowUpColumnProps) {
   const selectable = type === 'today' || type === 'overdue';
 
   return (
-    <div className="flex flex-col h-full min-w-0">
+    <div className={cn(
+      'flex flex-col h-full min-w-0 rounded-xl transition-all duration-300',
+      isHighlightedColumn && 'ring-2 ring-primary-400 ring-offset-2'
+    )}>
       <div className={cn(
         'px-4 py-3 rounded-t-xl border-b shrink-0 flex items-center gap-3',
-        headerColorStyles[color]
+        headerColorStyles[color],
+        isHighlightedColumn && 'bg-primary-100 border-primary-200'
       )}>
         <div className={cn(
           'w-2.5 h-2.5 rounded-full',
@@ -91,6 +99,7 @@ export function FollowUpColumn({
                   followUp={followUp}
                   onClick={() => onCardClick(followUp)}
                   columnType={type}
+                  highlighted={highlightedId === followUp.id}
                 />
               </div>
             </div>

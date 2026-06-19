@@ -6,6 +6,7 @@ export interface User {
   role: UserRole;
   avatar?: string;
   phone?: string;
+  title?: string;
 }
 
 export type Gender = 'male' | 'female';

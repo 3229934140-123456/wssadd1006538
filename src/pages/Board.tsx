@@ -13,11 +13,13 @@ import {
   MessageCircle,
   CheckSquare,
   Square,
+  Pin,
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FollowUpColumn } from '@/components/board/FollowUpColumn';
 import { FollowUpDetailModal } from '@/components/board/FollowUpDetailModal';
 import { BatchContactModal } from '@/components/board/BatchContactModal';
+import { ReminderTracker } from '@/components/board/ReminderTracker';
 import { useFollowUpStore } from '@/store/useFollowUpStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { FollowUpWithDetails, BoardColumnType } from '@/types';
@@ -26,8 +28,9 @@ import { Button } from '@/components/ui/Button';
 import { formatDateCN, getToday } from '@/utils';
 
 export default function Board() {
-  const [searchParams] = useSearchParams();
-  const highlightId = searchParams.get('highlight');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const initialHighlightId = searchParams.get('highlight');
 
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUpWithDetails | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,6 +39,9 @@ export default function Board() {
   const [selectedReception, setSelectedReception] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [highlightedColumn, setHighlightedColumn] = useState<BoardColumnType | null>(null);
+  const hasOpenedRef = useRef(false);
 
   const todayFollowUps = useFollowUpStore(state => state.getTodayFollowUps());
   const overdueFollowUps = useFollowUpStore(state => state.getOverdueFollowUps());
@@ -43,29 +49,28 @@ export default function Board() {
   const completedFollowUps = useFollowUpStore(state => state.getCompletedFollowUps());
   const users = useAuthStore(state => state.users);
 
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
-    if (highlightId) {
-      const allItems = [...todayFollowUps, ...overdueFollowUps, ...futureFollowUps];
-      const target = allItems.find(f => f.id === highlightId);
-      if (target) {
-        setSelectedFollowUp(target);
-        setIsModalOpen(true);
-      }
-      highlightTimerRef.current = setTimeout(() => {
-        if (highlightTimerRef.current) {
-          clearTimeout(highlightTimerRef.current);
-          highlightTimerRef.current = null;
+    if (initialHighlightId && !hasOpenedRef.current) {
+      hasOpenedRef.current = true;
+      const allItems = [
+        { col: 'today' as BoardColumnType, items: todayFollowUps },
+        { col: 'overdue' as BoardColumnType, items: overdueFollowUps },
+        { col: 'future' as BoardColumnType, items: futureFollowUps },
+        { col: 'completed' as BoardColumnType, items: completedFollowUps },
+      ];
+      for (const { col, items } of allItems) {
+        const target = items.find(f => f.id === initialHighlightId);
+        if (target) {
+          setSelectedFollowUp(target);
+          setIsModalOpen(true);
+          setHighlightedId(initialHighlightId);
+          setHighlightedColumn(col);
+          break;
         }
-      }, 3000);
-    }
-    return () => {
-      if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current);
       }
-    };
-  }, [highlightId, todayFollowUps, overdueFollowUps, futureFollowUps]);
+      navigate('/board', { replace: true });
+    }
+  }, [initialHighlightId, todayFollowUps, overdueFollowUps, futureFollowUps, completedFollowUps, navigate]);
 
   const doctors = [
     { id: 'all', name: '全部医生' },
@@ -129,6 +134,8 @@ export default function Board() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedFollowUp(null);
+    setHighlightedId(null);
+    setHighlightedColumn(null);
   };
 
   const toggleSelect = (id: string) => {
@@ -161,6 +168,14 @@ export default function Board() {
               {selectedReception === 'mine' && currentUser && (
                 <span className="ml-2 text-primary-600">· 查看我的任务</span>
               )}
+              {highlightedColumn && highlightedId && (
+                <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs font-medium animate-pulse">
+                  <Pin size={12} />
+                  已定位到「{highlightedColumn === 'today' ? '今日需联系' :
+                    highlightedColumn === 'overdue' ? '逾期未联系' :
+                    highlightedColumn === 'future' ? '未来待办' : '已完成'}」列
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -184,6 +199,11 @@ export default function Board() {
             </Button>
           </div>
         </div>
+
+        <ReminderTracker
+          onOpenFollowUp={handleCardClick}
+          currentReceptionFilter={selectedReception}
+        />
 
         <div className="flex items-center gap-4 bg-white rounded-xl p-3 shadow-card border border-slate-100">
           <div className="relative flex-1 max-w-md">
@@ -242,6 +262,8 @@ export default function Board() {
           icon={<Clock size={20} className="text-slate-300" />}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          highlightedId={highlightedId}
+          isHighlightedColumn={highlightedColumn === 'today'}
         />
 
         <FollowUpColumn
@@ -253,6 +275,8 @@ export default function Board() {
           icon={<AlertTriangle size={20} className="text-slate-300" />}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          highlightedId={highlightedId}
+          isHighlightedColumn={highlightedColumn === 'overdue'}
         />
 
         <FollowUpColumn
@@ -264,6 +288,8 @@ export default function Board() {
           icon={<CalendarDays size={20} className="text-slate-300" />}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          highlightedId={highlightedId}
+          isHighlightedColumn={highlightedColumn === 'future'}
         />
 
         <FollowUpColumn
@@ -273,6 +299,8 @@ export default function Board() {
           onCardClick={handleCardClick}
           color="green"
           icon={<CheckCircle2 size={20} className="text-slate-300" />}
+          highlightedId={highlightedId}
+          isHighlightedColumn={highlightedColumn === 'completed'}
         />
       </div>
 

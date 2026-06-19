@@ -101,7 +101,7 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
   };
 
   const feedbackFilled = selectedResult === 'booked'
-    ? (feedback.bleedingImproved !== undefined || feedback.flossUsing !== undefined || !!feedback.otherComments || !!notes)
+    ? (feedback.bleedingImproved !== undefined && feedback.flossUsing !== undefined && !!notes.trim())
     : true;
 
   const handleSave = () => {
@@ -531,30 +531,68 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
 
               {(selectedResult === 'connected' || selectedResult === 'booked') && (
                 <div className="space-y-4 animate-slide-down">
-                  <h5 className="text-sm font-medium text-slate-700">患者反馈</h5>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-primary-300 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={feedback.bleedingImproved || false}
-                        onChange={(e) =>
-                          setFeedback({ ...feedback, bleedingImproved: e.target.checked })
-                        }
-                        className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-slate-700">刷牙出血已缓解</span>
-                    </label>
-                    <label className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-primary-300 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={feedback.flossUsing || false}
-                        onChange={(e) =>
-                          setFeedback({ ...feedback, flossUsing: e.target.checked })
-                        }
-                        className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-slate-700">按时使用牙线</span>
-                    </label>
+                  <h5 className="text-sm font-medium text-slate-700">患者反馈 {selectedResult === 'booked' && (
+                    <span className="text-danger-500 font-normal text-xs ml-1">* 均为必填项</span>
+                  )}</h5>
+
+                  <div>
+                    <p className="text-xs text-slate-500 mb-2">刷牙出血情况</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label
+                        onClick={() => setFeedback({ ...feedback, bleedingImproved: true })}
+                        className={cn(
+                          'flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-sm font-medium',
+                          feedback.bleedingImproved === true
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-green-300'
+                        )}
+                      >
+                        <CheckCircle2 size={16} />
+                        已缓解
+                      </label>
+                      <label
+                        onClick={() => setFeedback({ ...feedback, bleedingImproved: false })}
+                        className={cn(
+                          'flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-sm font-medium',
+                          feedback.bleedingImproved === false
+                            ? 'border-danger-500 bg-danger-50 text-danger-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-danger-300'
+                        )}
+                      >
+                        <XCircle size={16} />
+                        未缓解
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-500 mb-2">牙线使用情况</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label
+                        onClick={() => setFeedback({ ...feedback, flossUsing: true })}
+                        className={cn(
+                          'flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-sm font-medium',
+                          feedback.flossUsing === true
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-green-300'
+                        )}
+                      >
+                        <CheckCircle2 size={16} />
+                        使用牙线
+                      </label>
+                      <label
+                        onClick={() => setFeedback({ ...feedback, flossUsing: false })}
+                        className={cn(
+                          'flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-sm font-medium',
+                          feedback.flossUsing === false
+                            ? 'border-warning-500 bg-warning-50 text-warning-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-warning-300'
+                        )}
+                      >
+                        <XCircle size={16} />
+                        未使用
+                      </label>
+                    </div>
                   </div>
 
                   <TextArea
@@ -569,8 +607,8 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
 
                   {selectedResult === 'booked' && (
                     <TextArea
-                      label="备注"
-                      placeholder="联系备注..."
+                      label="联系备注"
+                      placeholder="请输入本次联系的备注..."
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       rows={2}
@@ -617,6 +655,7 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                     variant="primary"
                     fullWidth
                     onClick={() => setShowScheduler(true)}
+                    disabled={!feedbackFilled}
                     className="gap-2"
                   >
                     <Calendar size={16} />
@@ -624,9 +663,14 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                     <ArrowRight size={16} />
                   </Button>
                   {!feedbackFilled && (
-                    <p className="text-xs text-slate-400 mt-2 text-center">
-                      请先填写刷牙出血和牙线使用情况
-                    </p>
+                    <div className="text-xs text-danger-500 mt-2 text-center space-y-0.5">
+                      <p>请完成：</p>
+                      <p>
+                        {feedback.bleedingImproved === undefined && '刷牙出血情况 · '}
+                        {feedback.flossUsing === undefined && '牙线使用情况 · '}
+                        {!notes.trim() && '填写联系备注'}
+                      </p>
+                    </div>
                   )}
                 </div>
               )}

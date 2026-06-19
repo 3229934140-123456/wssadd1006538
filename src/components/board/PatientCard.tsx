@@ -12,9 +12,10 @@ interface PatientCardProps {
   followUp: FollowUpWithDetails;
   onClick?: () => void;
   columnType: 'today' | 'overdue' | 'future' | 'completed';
+  highlighted?: boolean;
 }
 
-export function PatientCard({ followUp, onClick, columnType }: PatientCardProps) {
+export function PatientCard({ followUp, onClick, columnType, highlighted }: PatientCardProps) {
   const { patient, cleaningRecord, doctor, result, attemptCount } = followUp;
 
   const getTagColor = (tagKey: ProblemTag): 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'gray' => {
@@ -47,8 +48,9 @@ export function PatientCard({ followUp, onClick, columnType }: PatientCardProps)
     <Card
       hover
       className={cn(
-        'p-4 animate-slide-up',
-        columnType === 'overdue' && 'border-l-4 border-l-warning-400'
+        'p-4 animate-slide-up transition-all duration-300',
+        columnType === 'overdue' && 'border-l-4 border-l-warning-400',
+        highlighted && 'ring-2 ring-primary-400 bg-primary-50/50 scale-[1.02]'
       )}
       onClick={onClick}
     >
