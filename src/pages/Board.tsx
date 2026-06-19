@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Calendar,
   Filter,
@@ -8,26 +8,77 @@ import {
   CheckCircle2,
   Plus,
   UserPlus,
+  CalendarDays,
+  Phone,
+  MessageCircle,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { FollowUpColumn } from '@/components/board/FollowUpColumn';
 import { FollowUpDetailModal } from '@/components/board/FollowUpDetailModal';
+import { BatchContactModal } from '@/components/board/BatchContactModal';
 import { useFollowUpStore } from '@/store/useFollowUpStore';
-import { usePatientStore } from '@/store/usePatientStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { FollowUpWithDetails, BoardColumnType } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { formatDateCN, getToday } from '@/utils';
 
 export default function Board() {
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUpWithDetails | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
+  const [selectedReception, setSelectedReception] = useState<string>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
 
   const todayFollowUps = useFollowUpStore(state => state.getTodayFollowUps());
   const overdueFollowUps = useFollowUpStore(state => state.getOverdueFollowUps());
+  const futureFollowUps = useFollowUpStore(state => state.getFutureFollowUps());
   const completedFollowUps = useFollowUpStore(state => state.getCompletedFollowUps());
-  const patients = usePatientStore(state => state.patients);
+  const users = useAuthStore(state => state.users);
+
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (highlightId) {
+      const allItems = [...todayFollowUps, ...overdueFollowUps, ...futureFollowUps];
+      const target = allItems.find(f => f.id === highlightId);
+      if (target) {
+        setSelectedFollowUp(target);
+        setIsModalOpen(true);
+      }
+      highlightTimerRef.current = setTimeout(() => {
+        if (highlightTimerRef.current) {
+          clearTimeout(highlightTimerRef.current);
+          highlightTimerRef.current = null;
+        }
+      }, 3000);
+    }
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, [highlightId, todayFollowUps, overdueFollowUps, futureFollowUps]);
+
+  const doctors = [
+    { id: 'all', name: '全部医生' },
+    ...users.filter(u => u.role === 'doctor').map(u => ({ id: u.id, name: u.name })),
+  ];
+
+  const receptions = [
+    { id: 'all', name: '全部前台' },
+    { id: 'mine', name: '我的任务' },
+    ...users.filter(u => u.role === 'reception').map(u => ({ id: u.id, name: u.name })),
+  ];
+
+  const currentUser = useAuthStore(state => state.currentUser);
 
   const columns = useMemo(() => {
     const filterByKeyword = (items: FollowUpWithDetails[]) => {
@@ -45,12 +96,30 @@ export default function Board() {
       return items.filter(item => item.assignedDoctorId === selectedDoctor);
     };
 
-    return {
-      today: filterByDoctor(filterByKeyword(todayFollowUps)),
-      overdue: filterByDoctor(filterByKeyword(overdueFollowUps)),
-      completed: filterByDoctor(filterByKeyword(completedFollowUps)),
+    const filterByReception = (items: FollowUpWithDetails[]) => {
+      if (selectedReception === 'all') return items;
+      if (selectedReception === 'mine') {
+        if (!currentUser) return items;
+        return items.filter(item => item.assignedReceptionId === currentUser.id);
+      }
+      return items.filter(item => item.assignedReceptionId === selectedReception);
     };
-  }, [todayFollowUps, overdueFollowUps, completedFollowUps, searchKeyword, selectedDoctor]);
+
+    const applyFilters = (items: FollowUpWithDetails[]) =>
+      filterByReception(filterByDoctor(filterByKeyword(items)));
+
+    return {
+      today: applyFilters(todayFollowUps),
+      overdue: applyFilters(overdueFollowUps),
+      future: applyFilters(futureFollowUps),
+      completed: applyFilters(completedFollowUps),
+    };
+  }, [todayFollowUps, overdueFollowUps, futureFollowUps, completedFollowUps, searchKeyword, selectedDoctor, selectedReception, currentUser]);
+
+  const allSelectableItems = useMemo(() => [
+    ...columns.today,
+    ...columns.overdue,
+  ], [columns.today, columns.overdue]);
 
   const handleCardClick = (followUp: FollowUpWithDetails) => {
     setSelectedFollowUp(followUp);
@@ -62,12 +131,22 @@ export default function Board() {
     setSelectedFollowUp(null);
   };
 
-  const doctors = [
-    { id: 'all', name: '全部医生' },
-    { id: 'doctor1', name: '张明医生' },
-    { id: 'doctor2', name: '李华医生' },
-    { id: 'doctor3', name: '王芳医生' },
-  ];
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === allSelectableItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allSelectableItems.map(i => i.id)));
+    }
+  };
 
   const totalPending = columns.today.length + columns.overdue.length;
 
@@ -79,16 +158,29 @@ export default function Board() {
             <h1 className="text-2xl font-bold text-slate-900">随访看板</h1>
             <p className="text-sm text-slate-500 mt-1">
               {formatDateCN(getToday())} · 待联系 <span className="font-medium text-warning-600">{totalPending}</span> 位患者
+              {selectedReception === 'mine' && currentUser && (
+                <span className="ml-2 text-primary-600">· 查看我的任务</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" size="md">
-              <Plus size={16} />
-              新增患者
-            </Button>
-            <Button variant="primary" size="md">
-              <Calendar size={16} />
-              查看日历
+            {selectedIds.size > 0 && (
+              <Button variant="secondary" size="md" onClick={() => setShowBatchModal(true)}>
+                <Phone size={16} />
+                批量联系 ({selectedIds.size})
+              </Button>
+            )}
+            <Button
+              variant={selectedIds.size > 0 ? 'ghost' : 'secondary'}
+              size="md"
+              onClick={selectAll}
+            >
+              {selectedIds.size === allSelectableItems.length && allSelectableItems.length > 0 ? (
+                <CheckSquare size={16} />
+              ) : (
+                <Square size={16} />
+              )}
+              {selectedIds.size === allSelectableItems.length && allSelectableItems.length > 0 ? '取消全选' : '全选'}
             </Button>
           </div>
         </div>
@@ -118,15 +210,29 @@ export default function Board() {
             </select>
           </div>
 
+          <div className="flex items-center gap-2">
+            <UserPlus size={16} className="text-slate-400" />
+            <select
+              value={selectedReception}
+              onChange={(e) => setSelectedReception(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              {receptions.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="ml-auto flex items-center gap-2">
-            <Badge variant="warning">逾期 {columns.overdue.length}</Badge>
+            <Badge variant="danger">逾期 {columns.overdue.length}</Badge>
             <Badge variant="info">今日 {columns.today.length}</Badge>
+            <Badge variant="default">未来 {columns.future.length}</Badge>
             <Badge variant="success">已完成 {columns.completed.length}</Badge>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+      <div className="flex-1 grid grid-cols-4 gap-4 min-h-0">
         <FollowUpColumn
           type="today"
           title="今日需联系"
@@ -134,6 +240,8 @@ export default function Board() {
           onCardClick={handleCardClick}
           color="blue"
           icon={<Clock size={20} className="text-slate-300" />}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
         />
 
         <FollowUpColumn
@@ -143,6 +251,19 @@ export default function Board() {
           onCardClick={handleCardClick}
           color="orange"
           icon={<AlertTriangle size={20} className="text-slate-300" />}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+        />
+
+        <FollowUpColumn
+          type="future"
+          title="未来待办"
+          items={columns.future}
+          onCardClick={handleCardClick}
+          color="gray"
+          icon={<CalendarDays size={20} className="text-slate-300" />}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
         />
 
         <FollowUpColumn
@@ -160,6 +281,16 @@ export default function Board() {
         onClose={handleCloseModal}
         followUp={selectedFollowUp}
       />
+
+      {showBatchModal && (
+        <BatchContactModal
+          selectedItems={allSelectableItems.filter(i => selectedIds.has(i.id))}
+          onClose={() => {
+            setShowBatchModal(false);
+            setSelectedIds(new Set());
+          }}
+        />
+      )}
     </div>
   );
 }

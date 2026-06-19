@@ -55,7 +55,7 @@ export default function PatientDetail() {
   const [expandedRecord, setExpandedRecord] = useState<string | null>(
     cleaningRecords[0]?.id || null
   );
-  const [showSuccessToast, setShowSuccessToast] = useState<{ visible: boolean; group: 'today' | 'future' | 'overdue'; receptionName: string; plannedDate: string } | null>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState<{ visible: boolean; group: 'today' | 'future' | 'overdue'; receptionName: string; plannedDate: string; followUpId: string } | null>(null);
 
   const [cleaningDate, setCleaningDate] = useState(getToday());
   const [selectedItems, setSelectedItems] = useState<string[]>(['超声波洁治', '喷砂抛光']);
@@ -109,7 +109,7 @@ export default function PatientDetail() {
     const finalReceptionId = assignedReceptionId || receptions[0]?.id;
     const finalReceptionName = receptions.find(r => r.id === finalReceptionId)?.name || '前台';
 
-    addFollowUp({
+    const newFollowUp = addFollowUp({
       patientId: patient.id,
       cleaningRecordId: record.id,
       assignedDoctorId: patient.doctorId,
@@ -129,6 +129,7 @@ export default function PatientDetail() {
       group,
       receptionName: finalReceptionName,
       plannedDate: followUpDate,
+      followUpId: newFollowUp.id,
     });
 
     setShowAddModal(false);
@@ -557,8 +558,9 @@ export default function PatientDetail() {
                 知道了
               </Button>
               <Button variant="primary" size="sm" onClick={() => {
+                const id = showSuccessToast?.followUpId;
                 setShowSuccessToast(null);
-                navigate('/board');
+                navigate(`/board${id ? `?highlight=${id}` : ''}`);
               }}>
                 前往看板
               </Button>

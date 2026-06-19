@@ -38,6 +38,7 @@ interface FollowUpState {
   getFollowUpsByPatient: (patientId: string) => FollowUp[];
   getTodayFollowUps: () => FollowUpWithDetails[];
   getOverdueFollowUps: () => FollowUpWithDetails[];
+  getFutureFollowUps: () => FollowUpWithDetails[];
   getCompletedFollowUps: () => FollowUpWithDetails[];
   getAllFollowUpsWithDetails: () => FollowUpWithDetails[];
   getFollowUpsByDoctor: (doctorId: string) => FollowUp[];
@@ -210,6 +211,18 @@ export const useFollowUpStore = create<FollowUpState>()(
               f.status === 'pending' &&
               isPast(f.plannedDate) &&
               !isToday(f.plannedDate)
+          )
+          .sort((a, b) => new Date(a.plannedDate).getTime() - new Date(b.plannedDate).getTime())
+          .map(enrichFollowUp);
+      },
+
+      getFutureFollowUps: () => {
+        const today = getToday();
+        return get()
+          .followUps.filter(
+            (f) =>
+              f.status === 'pending' &&
+              f.plannedDate > today
           )
           .sort((a, b) => new Date(a.plannedDate).getTime() - new Date(b.plannedDate).getTime())
           .map(enrichFollowUp);

@@ -14,6 +14,7 @@ import {
   History,
   CalendarCheck,
   Check,
+  ArrowRight,
 } from 'lucide-react';
 import type {
   FollowUpWithDetails,
@@ -59,11 +60,12 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
   const [notes, setNotes] = useState('');
   const [nextFollowUpDate, setNextFollowUpDate] = useState(addDays(getToday(), 30));
   const [showScheduler, setShowScheduler] = useState(false);
-  const [bookedAppointment, setBookedAppointment] = useState<Appointment | null>(null);
+  const [justBooked, setJustBooked] = useState(false);
 
   const updateFollowUpResult = useFollowUpStore((state) => state.updateFollowUpResult);
   const addAppointment = useAppointmentStore((state) => state.addAppointment);
   const getAppointmentsByPatient = useAppointmentStore((state) => state.getAppointmentsByPatient);
+  const getFollowUpById = useFollowUpStore((state) => state.getFollowUpById);
   const { currentUser } = useAuthStore();
 
   useEffect(() => {
@@ -74,13 +76,15 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
       setNotes('');
       setNextFollowUpDate(addDays(getToday(), 30));
       setShowScheduler(false);
+      setJustBooked(false);
     }
   }, [isOpen]);
 
   if (!followUp) return null;
 
+  const latestFollowUp = getFollowUpById(followUp.id) || followUp;
   const { patient, cleaningRecord, doctor } = followUp;
-  const contactLogs = followUp.contactLogs || [];
+  const contactLogs = latestFollowUp.contactLogs || [];
   const appointments = getAppointmentsByPatient(patient.id).filter(
     (a) => a.status !== 'cancelled'
   );
@@ -90,12 +94,15 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
 
   const handleResultSelect = (result: FollowUpResult) => {
     setSelectedResult(result);
-    if (result === 'booked') {
-      setShowScheduler(true);
-    } else {
+    setJustBooked(false);
+    if (result !== 'booked') {
       setShowScheduler(false);
     }
   };
+
+  const feedbackFilled = selectedResult === 'booked'
+    ? (feedback.bleedingImproved !== undefined || feedback.flossUsing !== undefined || !!feedback.otherComments || !!notes)
+    : true;
 
   const handleSave = () => {
     if (!selectedResult || !currentUser) return;
@@ -109,7 +116,7 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
       feedback,
       notes,
       selectedResult === 'connected' ? nextFollowUpDate : undefined,
-      bookedAppointment?.id
+      undefined
     );
     onClose();
   };
@@ -135,8 +142,6 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
       notes: mergedNotes || '随访预约',
     });
 
-    setBookedAppointment(newApt);
-
     if (currentUser) {
       updateFollowUpResult(
         followUp.id,
@@ -152,7 +157,8 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
     }
 
     setShowScheduler(false);
-    onClose();
+    setJustBooked(true);
+    setActiveTab('appointment');
   };
 
   const getResultBtnClass = (result: FollowUpResult) => {
@@ -198,23 +204,15 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
   const getTagColor = (tagKey: ProblemTag): any => {
     const tag = PROBLEM_TAGS.find((t) => t.key === tagKey);
     const colorMap: Record<string, any> = {
-      red: 'red',
-      orange: 'orange',
-      yellow: 'yellow',
-      purple: 'purple',
-      blue: 'blue',
-      pink: 'pink',
-      gray: 'gray',
+      red: 'red', orange: 'orange', yellow: 'yellow',
+      purple: 'purple', blue: 'blue', pink: 'pink', gray: 'gray',
     };
     return colorMap[tag?.color || 'gray'] || 'gray';
   };
 
   const getResultBadgeVariant = (result: FollowUpResult): string => {
     const map: Record<FollowUpResult, string> = {
-      connected: 'success',
-      noAnswer: 'default',
-      refused: 'danger',
-      booked: 'info',
+      connected: 'success', noAnswer: 'default', refused: 'danger', booked: 'info',
     };
     return map[result];
   };
@@ -232,6 +230,12 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
       chips.push({
         label: fb.flossUsing ? '按时使用牙线' : '未使用牙线',
         color: fb.flossUsing ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700',
+      });
+    }
+    if (fb.otherComments) {
+      chips.push({
+        label: fb.otherComments,
+        color: 'bg-slate-100 text-slate-700',
       });
     }
     if (chips.length === 0) return null;
@@ -287,7 +291,7 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <AlertCircle size={16} className="text-slate-400" />
-                <span className="text-slate-700">计划回访: {formatDateShort(followUp.plannedDate)}</span>
+                <span className="text-slate-700">计划回访: {formatDateShort(latestFollowUp.plannedDate)}</span>
               </div>
             </div>
 
@@ -297,6 +301,16 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                   <h4 className="text-sm font-medium text-slate-700">跟进次数</h4>
                   <Badge variant="warning">{contactLogs.length} 次</Badge>
                 </div>
+              </div>
+            )}
+
+            {justBooked && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-xl animate-slide-up">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span className="text-sm font-medium text-green-800">预约成功</span>
+                </div>
+                <p className="text-xs text-green-700 mt-1">预约记录和反馈已保存</p>
               </div>
             )}
           </div>
@@ -347,10 +361,7 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {cleaningRecord.items.map((item) => (
-                        <span
-                          key={item}
-                          className="px-3 py-1 bg-slate-100 rounded-md text-sm text-slate-700"
-                        >
+                        <span key={item} className="px-3 py-1 bg-slate-100 rounded-md text-sm text-slate-700">
                           {item}
                         </span>
                       ))}
@@ -423,10 +434,23 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                       {relatedAppointments.map((apt) => (
                         <div
                           key={apt.id}
-                          className="p-4 bg-info-50 rounded-xl border border-info-100"
+                          className={cn(
+                            'p-4 rounded-xl border',
+                            apt.status === 'confirmed'
+                              ? 'bg-info-50 border-info-100'
+                              : apt.status === 'completed'
+                                ? 'bg-green-50 border-green-100'
+                                : 'bg-slate-50 border-slate-200'
+                          )}
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <Badge variant="info">已预约复查</Badge>
+                            <Badge variant={
+                              apt.status === 'confirmed' ? 'info' :
+                              apt.status === 'completed' ? 'success' : 'danger'
+                            }>
+                              {apt.status === 'confirmed' ? '已预约复查' :
+                               apt.status === 'completed' ? '已完成复查' : '已取消'}
+                            </Badge>
                             <span className="text-xs text-slate-500">
                               创建于 {formatDateShort(apt.createdAt)}
                             </span>
@@ -438,12 +462,27 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                             {apt.type} · {doctor.name}
                           </p>
                           {apt.notes && (
-                            <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-info-100">
+                            <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
                               备注：{apt.notes}
                             </p>
                           )}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {latestFollowUp.patientFeedback && (
+                    <div className="mt-5 p-4 bg-green-50 border border-green-100 rounded-xl">
+                      <h4 className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+                        <CheckCircle2 size={14} />
+                        最近一次患者反馈
+                      </h4>
+                      {renderFeedbackChips(latestFollowUp.patientFeedback)}
+                      {latestFollowUp.notes && (
+                        <p className="text-sm text-green-700 mt-2 pt-2 border-t border-green-100">
+                          备注：{latestFollowUp.notes}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -527,6 +566,16 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
                     }
                     rows={2}
                   />
+
+                  {selectedResult === 'booked' && (
+                    <TextArea
+                      label="备注"
+                      placeholder="联系备注..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={2}
+                    />
+                  )}
                 </div>
               )}
 
@@ -564,25 +613,34 @@ export function FollowUpDetailModal({ isOpen, onClose, followUp }: FollowUpDetai
 
               {selectedResult === 'booked' && !showScheduler && (
                 <div className="mt-4 animate-slide-down">
-                  <Button variant="secondary" fullWidth onClick={() => setShowScheduler(true)}>
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    onClick={() => setShowScheduler(true)}
+                    className="gap-2"
+                  >
                     <Calendar size={16} />
-                    选择复查时段
+                    填写完反馈，选择复查时段
+                    <ArrowRight size={16} />
                   </Button>
+                  {!feedbackFilled && (
+                    <p className="text-xs text-slate-400 mt-2 text-center">
+                      请先填写刷牙出血和牙线使用情况
+                    </p>
+                  )}
                 </div>
               )}
 
               <div className="flex justify-end gap-3 mt-5">
                 <Button variant="secondary" onClick={onClose}>
-                  取消
+                  关闭
                 </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleSave}
-                  disabled={!selectedResult || selectedResult === 'booked'}
-                >
-                  <Check size={16} />
-                  {selectedResult === 'booked' ? '请先选择时段' : '保存结果'}
-                </Button>
+                {selectedResult && selectedResult !== 'booked' && (
+                  <Button variant="primary" onClick={handleSave}>
+                    <Check size={16} />
+                    保存结果
+                  </Button>
+                )}
               </div>
             </div>
           </div>

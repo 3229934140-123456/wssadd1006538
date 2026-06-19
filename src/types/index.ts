@@ -140,7 +140,7 @@ export interface FollowUpWithDetails extends FollowUp {
   doctor: User;
 }
 
-export type BoardColumnType = 'today' | 'overdue' | 'completed';
+export type BoardColumnType = 'today' | 'overdue' | 'future' | 'completed';
 
 export interface BoardColumn {
   type: BoardColumnType;

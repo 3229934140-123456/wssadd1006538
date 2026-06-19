@@ -11,7 +11,7 @@ import { cn } from '@/utils';
 interface PatientCardProps {
   followUp: FollowUpWithDetails;
   onClick?: () => void;
-  columnType: 'today' | 'overdue' | 'completed';
+  columnType: 'today' | 'overdue' | 'future' | 'completed';
 }
 
 export function PatientCard({ followUp, onClick, columnType }: PatientCardProps) {
@@ -136,6 +136,13 @@ export function PatientCard({ followUp, onClick, columnType }: PatientCardProps)
             <div className="flex items-center gap-1 mt-2 text-xs text-info-600 bg-info-50 px-2 py-1 rounded-md">
               <Clock size={12} />
               <span>第 {attemptCount} 次联系</span>
+            </div>
+          )}
+
+          {columnType === 'future' && (
+            <div className="flex items-center gap-1 mt-2 text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded-md">
+              <Calendar size={12} />
+              <span>计划: {formatDateShort(followUp.plannedDate)}</span>
             </div>
           )}
         </div>
