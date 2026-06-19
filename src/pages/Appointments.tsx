@@ -75,6 +75,48 @@ export default function Appointments() {
     return stats;
   }, [weekDates, nonCancelledAppointments, doctors]);
 
+  const occupancyRate = useMemo(() => {
+    const rates: Record<string, Record<string, { used: number; total: number; rate: number; level: 'empty' | 'light' | 'medium' | 'busy' | 'full' }>> = {};
+    const totalSlots = TIME_SLOTS.length;
+    for (const date of weekDates) {
+      rates[date] = {};
+      for (const d of doctors) {
+        const used = getAppointmentsForCell(date, d.id).length;
+        const rate = totalSlots > 0 ? used / totalSlots : 0;
+        let level: 'empty' | 'light' | 'medium' | 'busy' | 'full' = 'empty';
+        if (rate === 0) level = 'empty';
+        else if (rate < 0.3) level = 'light';
+        else if (rate < 0.6) level = 'medium';
+        else if (rate < 1) level = 'busy';
+        else level = 'full';
+        rates[date][d.id] = { used, total: totalSlots, rate, level };
+      }
+    }
+    return rates;
+  }, [weekDates, doctors, getAppointmentsForCell, nonCancelledAppointments]);
+
+  const getOccupancyColor = (level: string) => {
+    const map: Record<string, string> = {
+      empty: 'bg-white',
+      light: 'bg-green-50',
+      medium: 'bg-blue-50',
+      busy: 'bg-warning-50',
+      full: 'bg-danger-50',
+    };
+    return map[level] || 'bg-white';
+  };
+
+  const getOccupancyText = (level: string) => {
+    const map: Record<string, string> = {
+      empty: '空闲',
+      light: '较空',
+      medium: '适中',
+      busy: '较忙',
+      full: '满档',
+    };
+    return map[level] || '';
+  };
+
   const statusConfig: Record<string, { label: string; variant: string }> = {
     pending: { label: '待确认', variant: 'warning' },
     confirmed: { label: '已确认', variant: 'success' },
@@ -166,6 +208,10 @@ export default function Appointments() {
                   onAppointmentClick={handleAppointmentClick}
                   isToday={isToday}
                   statusConfig={statusConfig}
+                  occupancyRate={occupancyRate}
+                  getOccupancyColor={getOccupancyColor}
+                  getOccupancyText={getOccupancyText}
+                  timeSlots={TIME_SLOTS}
                 />
               ) : (
                 <AllDoctorsMatrix
@@ -177,13 +223,41 @@ export default function Appointments() {
                   onAppointmentClick={handleAppointmentClick}
                   isToday={isToday}
                   statusConfig={statusConfig}
+                  occupancyRate={occupancyRate}
+                  getOccupancyColor={getOccupancyColor}
+                  getOccupancyText={getOccupancyText}
+                  timeSlots={TIME_SLOTS}
                 />
               )}
             </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-slate-100">
-            <h4 className="text-sm font-semibold text-slate-700 mb-4">本周预约统计</h4>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-slate-700">本周预约统计</h4>
+              <div className="flex items-center gap-4 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-white border border-slate-200" />
+                  <span className="text-slate-500">空闲</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-green-50" />
+                  <span className="text-slate-500">较空</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-blue-50" />
+                  <span className="text-slate-500">适中</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-warning-50" />
+                  <span className="text-slate-500">较忙</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-danger-50" />
+                  <span className="text-slate-500">满档</span>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-7 gap-2">
               {weekDates.map(date => {
                 const stat = weekStats[date];
@@ -205,13 +279,18 @@ export default function Appointments() {
                       {stat.total}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1 justify-center">
-                      {doctors.map(d => (
-                        stat.byDoctor[d.id] > 0 && (
-                          <span key={d.id} className="text-[10px] px-1.5 py-0.5 bg-white rounded text-slate-500">
-                            {d.name.slice(0, 1)} {stat.byDoctor[d.id]}
+                      {doctors.map(d => {
+                        const occ = occupancyRate[date]?.[d.id];
+                        if (!occ) return null;
+                        return (
+                          <span key={d.id} className={cn(
+                            'text-[10px] px-1.5 py-0.5 rounded text-slate-500',
+                            getOccupancyColor(occ.level)
+                          )}>
+                            {d.name.slice(0, 1)} {occ.used}/{occ.total}
                           </span>
-                        )
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -230,6 +309,8 @@ export default function Appointments() {
   );
 }
 
+type OccupancyLevel = 'empty' | 'light' | 'medium' | 'busy' | 'full';
+
 interface ScheduleProps {
   weekDates: string[];
   weekDays: string[];
@@ -238,6 +319,10 @@ interface ScheduleProps {
   onAppointmentClick: (apt: Appointment) => void;
   isToday: (date: string) => boolean;
   statusConfig: Record<string, { label: string; variant: string }>;
+  occupancyRate: Record<string, Record<string, { used: number; total: number; rate: number; level: OccupancyLevel }>>;
+  getOccupancyColor: (level: string) => string;
+  getOccupancyText: (level: string) => string;
+  timeSlots: string[];
 }
 
 interface SingleDoctorScheduleProps extends ScheduleProps {
@@ -253,14 +338,37 @@ function SingleDoctorSchedule({
   onAppointmentClick,
   isToday,
   statusConfig,
+  occupancyRate,
+  getOccupancyColor,
+  getOccupancyText,
+  timeSlots,
 }: SingleDoctorScheduleProps) {
+  const weekOccupancy = weekDates.map(d => occupancyRate[d]?.[doctor.id] || null);
+  const avgRate = weekOccupancy.reduce((s, o) => s + (o?.rate || 0), 0) / weekOccupancy.length;
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-xl">
         <Avatar name={doctor.name} size="md" />
-        <div>
-          <p className="font-semibold text-slate-800">{doctor.name}</p>
-          <p className="text-xs text-slate-500">{doctor.title || '执业医师'}</p>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <p className="font-semibold text-slate-800">{doctor.name}</p>
+            <Badge variant="default" className="text-xs">
+              本周空闲率 {Math.round((1 - avgRate) * 100)}%
+            </Badge>
+          </div>
+          <div className="flex items-center gap-1 mt-1">
+            {weekOccupancy.map((occ, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  'w-6 h-2 rounded text-[9px] flex items-center justify-center',
+                  getOccupancyColor(occ?.level || 'empty')
+                )}
+                title={`${weekDays[new Date(weekDates[idx]).getDay()]} ${getOccupancyText(occ?.level || 'empty')}`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -269,7 +377,7 @@ function SingleDoctorSchedule({
           <div className="bg-slate-50 p-2 text-xs font-medium text-slate-500 text-center flex items-center justify-center">
             时段
           </div>
-          {TIME_SLOTS.map(slot => (
+          {timeSlots.map(slot => (
             <div key={slot} className="bg-white p-2 text-xs font-medium text-slate-500 text-center flex items-center justify-center">
               {slot}
             </div>
@@ -280,8 +388,8 @@ function SingleDoctorSchedule({
           {weekDates.map(date => (
             <div key={date} className="contents">
               <div className={cn(
-                'bg-slate-50 p-2 text-center',
-                isToday(date) && 'bg-primary-50'
+                'p-2 text-center',
+                isToday(date) ? 'bg-primary-50' : getOccupancyColor(occupancyRate[date]?.[doctor.id]?.level || 'empty')
               )}>
                 <p className={cn(
                   'text-xs font-medium',
@@ -295,6 +403,11 @@ function SingleDoctorSchedule({
                 )}>
                   {new Date(date).getDate()}
                 </p>
+                <div className="mt-0.5">
+                  <Badge variant="default" className="text-[9px] px-1 py-0 h-4">
+                    {getOccupancyText(occupancyRate[date]?.[doctor.id]?.level || 'empty')}
+                  </Badge>
+                </div>
                 <p className="text-[10px] text-slate-400 mt-0.5">
                   {getAppointmentsForCell(date, doctor.id).length}个
                 </p>
@@ -302,11 +415,15 @@ function SingleDoctorSchedule({
             </div>
           ))}
 
-          {TIME_SLOTS.map(slot => (
+          {timeSlots.map(slot => (
             weekDates.map(date => {
               const apts = getAppointmentsForCell(date, doctor.id, slot);
+              const dayLevel = occupancyRate[date]?.[doctor.id]?.level || 'empty';
               return (
-                <div key={`${date}-${slot}`} className="bg-white p-1 min-h-[50px]">
+                <div key={`${date}-${slot}`} className={cn(
+                  'p-1 min-h-[50px]',
+                  dayLevel === 'full' ? 'bg-danger-50' : apts.length > 0 ? 'bg-white' : getOccupancyColor(dayLevel)
+                )}>
                   {apts.length > 0 ? (
                     apts.map(apt => {
                       const patient = getPatientById(apt.patientId);
@@ -355,18 +472,22 @@ function AllDoctorsMatrix({
   getPatientById,
   onAppointmentClick,
   isToday,
+  occupancyRate,
+  getOccupancyColor,
+  getOccupancyText,
+  timeSlots,
 }: AllDoctorsMatrixProps) {
   return (
     <div>
       <div className="grid gap-px bg-slate-200 rounded-xl overflow-hidden border border-slate-200"
-        style={{ gridTemplateColumns: `120px repeat(${weekDates.length}, 1fr)` }}>
+        style={{ gridTemplateColumns: `140px repeat(${weekDates.length}, 1fr)` }}>
         <div className="bg-slate-50 p-3 text-xs font-medium text-slate-500 text-center">
           医生 / 日期
         </div>
         {weekDates.map(date => (
           <div key={date} className={cn(
-            'bg-slate-50 p-2 text-center',
-            isToday(date) && 'bg-primary-50'
+            'p-2 text-center',
+            isToday(date) ? 'bg-primary-50' : 'bg-slate-50'
           )}>
             <p className={cn(
               'text-xs font-medium',
@@ -380,23 +501,51 @@ function AllDoctorsMatrix({
           </div>
         ))}
 
-        {doctors.map(doctor => (
-          <div key={doctor.id} className="contents">
-            <div className="bg-white p-2 flex items-center gap-2 border-r border-slate-100">
-              <Avatar name={doctor.name} size="sm" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-800 truncate">{doctor.name}</p>
-                <p className="text-[10px] text-slate-400 truncate">{doctor.title || '医师'}</p>
+        {doctors.map(doctor => {
+          const docWeekOcc = weekDates.map(d => occupancyRate[d]?.[doctor.id] || null);
+          const docAvgRate = docWeekOcc.reduce((s, o) => s + (o?.rate || 0), 0) / docWeekOcc.length;
+          return (
+            <div key={doctor.id} className="contents">
+              <div className="bg-white p-2 flex items-center gap-2 border-r border-slate-100">
+                <Avatar name={doctor.name} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">{doctor.name}</p>
+                    <Badge variant="default" className="text-[9px] px-1 py-0 h-3">
+                      空闲 {Math.round((1 - docAvgRate) * 100)}%
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-0.5 mt-0.5">
+                    {docWeekOcc.map((occ, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          'w-3 h-1.5 rounded-sm',
+                          getOccupancyColor(occ?.level || 'empty')
+                        )}
+                        title={`${weekDays[new Date(weekDates[idx]).getDay()]} ${getOccupancyText(occ?.level || 'empty')}`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {weekDates.map(date => {
-              const apts = getAppointmentsForCell(date, doctor.id);
-              return (
-                <div key={`${doctor.id}-${date}`} className={cn(
-                  'bg-white p-1.5 min-h-[60px]',
-                  isToday(date) && 'bg-primary-50/30'
-                )}>
+              {weekDates.map(date => {
+                const apts = getAppointmentsForCell(date, doctor.id);
+                const occ = occupancyRate[date]?.[doctor.id];
+                return (
+                  <div key={`${doctor.id}-${date}`} className={cn(
+                    'p-1.5 min-h-[60px]',
+                    isToday(date) ? 'bg-primary-50/30' : getOccupancyColor(occ?.level || 'empty')
+                  )}>
+                    {occ && occ.level !== 'empty' && (
+                      <div className="flex items-center justify-between mb-1">
+                        <Badge variant="default" className="text-[9px] px-1 py-0 h-3">
+                          {getOccupancyText(occ.level)}
+                        </Badge>
+                        <span className="text-[9px] text-slate-500">{occ.used}/{occ.total}</span>
+                      </div>
+                    )}
                   {apts.length > 0 ? (
                     <div className="space-y-1">
                       {apts.slice(0, 3).map(apt => {
@@ -426,14 +575,17 @@ function AllDoctorsMatrix({
                     </div>
                   ) : (
                     <div className="h-full flex items-center justify-center">
-                      <span className="text-[10px] text-slate-300">无预约</span>
+                      <span className="text-[10px] text-slate-400">
+                        {occ && occ.level === 'empty' ? '全天空闲' : '无预约'}
+                      </span>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-        ))}
+        );
+      })}
       </div>
     </div>
   );

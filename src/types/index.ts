@@ -141,6 +141,22 @@ export interface FollowUpWithDetails extends FollowUp {
   doctor: User;
 }
 
+export interface ContactLogWithDetails extends ContactLog {
+  patient: Patient;
+  cleaningRecord: CleaningRecord;
+  doctor: User;
+  followUp: FollowUpWithDetails;
+}
+
+export interface DailyStats {
+  date: string;
+  totalContacts: number;
+  phoneContacts: number;
+  wechatContacts: number;
+  noAnswer: number;
+  booked: number;
+}
+
 export type BoardColumnType = 'today' | 'overdue' | 'future' | 'completed';
 
 export interface BoardColumn {

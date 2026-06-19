@@ -8,6 +8,8 @@ import type {
   FollowUpWithDetails,
   ContactLog,
   ContactMethod,
+  ContactLogWithDetails,
+  DailyStats,
 } from '@/types';
 import { mockFollowUps } from '@/data/mockData';
 import { generateId, getToday, addDays, isPast, isToday, formatDateCN } from '@/utils';
@@ -43,12 +45,14 @@ interface FollowUpState {
   getAllFollowUpsWithDetails: () => FollowUpWithDetails[];
   getFollowUpsByDoctor: (doctorId: string) => FollowUp[];
   retryNextDay: (id: string, contactMethod: ContactMethod, operatorId: string, operatorName: string) => void;
-  getTodayStats: () => {
-    phoneContacts: FollowUpWithDetails[];
-    wechatContacts: FollowUpWithDetails[];
-    noAnswerTomorrow: FollowUpWithDetails[];
-    bookedConversions: FollowUpWithDetails[];
+  getTodayStats: (receptionId?: string) => {
+    phoneContacts: ContactLogWithDetails[];
+    wechatContacts: ContactLogWithDetails[];
+    noAnswerTomorrow: ContactLogWithDetails[];
+    bookedConversions: ContactLogWithDetails[];
   };
+  getRecent7DaysStats: (receptionId?: string) => DailyStats[];
+  getContactLogsWithDetails: (receptionId?: string) => ContactLogWithDetails[];
 }
 
 function enrichFollowUp(followUp: FollowUp): FollowUpWithDetails {
@@ -65,6 +69,16 @@ function enrichFollowUp(followUp: FollowUp): FollowUpWithDetails {
     patient: patient!,
     cleaningRecord: cleaningRecord!,
     doctor: doctor!,
+  };
+}
+
+function enrichContactLog(log: ContactLog, followUp: FollowUpWithDetails): ContactLogWithDetails {
+  return {
+    ...log,
+    patient: followUp.patient,
+    cleaningRecord: followUp.cleaningRecord,
+    doctor: followUp.doctor,
+    followUp,
   };
 }
 
@@ -278,35 +292,72 @@ export const useFollowUpStore = create<FollowUpState>()(
         }));
       },
 
-      getTodayStats: () => {
+      getContactLogsWithDetails: (receptionId) => {
+        const result: ContactLogWithDetails[] = [];
+        for (const f of get().followUps) {
+          if (receptionId && f.assignedReceptionId !== receptionId) continue;
+          const enrichedFollowUp = enrichFollowUp(f);
+          for (const log of f.contactLogs || []) {
+            result.push(enrichContactLog(log, enrichedFollowUp));
+          }
+        }
+        return result.sort((a, b) =>
+          new Date(b.contactTime.replace(/年|月/g, '-').replace(/日/g, '')).getTime() -
+          new Date(a.contactTime.replace(/年|月/g, '-').replace(/日/g, '')).getTime()
+        );
+      },
+
+      getTodayStats: (receptionId) => {
         const today = getToday();
         const tomorrow = addDays(today, 1);
+        const todayDateStr = formatDateCN(new Date(today));
 
-        const phoneContacts: FollowUpWithDetails[] = [];
-        const wechatContacts: FollowUpWithDetails[] = [];
-        const noAnswerTomorrow: FollowUpWithDetails[] = [];
-        const bookedConversions: FollowUpWithDetails[] = [];
+        const phoneContacts: ContactLogWithDetails[] = [];
+        const wechatContacts: ContactLogWithDetails[] = [];
+        const noAnswerTomorrow: ContactLogWithDetails[] = [];
+        const bookedConversions: ContactLogWithDetails[] = [];
 
-        for (const f of get().followUps) {
-          if (f.updatedAt !== today) continue;
-          const lastLog = f.contactLogs?.[f.contactLogs.length - 1];
-          if (!lastLog) continue;
+        const allLogs = get().getContactLogsWithDetails(receptionId);
+        for (const log of allLogs) {
+          if (!log.contactTime.startsWith(todayDateStr)) continue;
 
-          const enriched = enrichFollowUp(f);
-          if (lastLog.contactMethod === 'phone') {
-            phoneContacts.push(enriched);
-          } else if (lastLog.contactMethod === 'wechat') {
-            wechatContacts.push(enriched);
+          if (log.contactMethod === 'phone') {
+            phoneContacts.push(log);
+          } else if (log.contactMethod === 'wechat') {
+            wechatContacts.push(log);
           }
-          if (lastLog.result === 'noAnswer' && f.plannedDate === tomorrow) {
-            noAnswerTomorrow.push(enriched);
+          if (log.result === 'noAnswer' && log.followUp.plannedDate === tomorrow) {
+            noAnswerTomorrow.push(log);
           }
-          if (lastLog.result === 'booked') {
-            bookedConversions.push(enriched);
+          if (log.result === 'booked') {
+            bookedConversions.push(log);
           }
         }
 
         return { phoneContacts, wechatContacts, noAnswerTomorrow, bookedConversions };
+      },
+
+      getRecent7DaysStats: (receptionId) => {
+        const today = getToday();
+        const stats: DailyStats[] = [];
+        const allLogs = get().getContactLogsWithDetails(receptionId);
+
+        for (let i = 6; i >= 0; i--) {
+          const date = addDays(today, -i);
+          const dateStr = formatDateCN(new Date(date));
+          const dayLogs = allLogs.filter(log => log.contactTime.startsWith(dateStr));
+
+          stats.push({
+            date,
+            totalContacts: dayLogs.length,
+            phoneContacts: dayLogs.filter(l => l.contactMethod === 'phone').length,
+            wechatContacts: dayLogs.filter(l => l.contactMethod === 'wechat').length,
+            noAnswer: dayLogs.filter(l => l.result === 'noAnswer').length,
+            booked: dayLogs.filter(l => l.result === 'booked').length,
+          });
+        }
+
+        return stats;
       },
     }),
     {
